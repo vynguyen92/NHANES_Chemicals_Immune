@@ -20,12 +20,12 @@ run_if_else_glm_weighted <- function(chemical_immune_chunk,
   immune_codename <- chemical_immune_chunk$celltype_codename %>%
     unique(.)
   print(paste(immune_codename, chem_codename))
-  print(chem_codename)
+  # print(chem_codename)
   
   #Calculate the number of cycles per chemical
   # sort(unique(chemical_immune_chunk$SDDSRVYR))
   cycle_length <- length(unique(chemical_immune_chunk$SDDSRVYR))
-  # print(paste("Number of cycles:", cycle_length))
+  print(paste("Number of cycles:", cycle_length))
   print(unique(chemical_immune_chunk$SDDSRVYR))
   
   #remove NAs from entire dataset
@@ -35,6 +35,15 @@ run_if_else_glm_weighted <- function(chemical_immune_chunk,
   # grabs the unique data for the cycle year (SDDSRVYR) for non-NA chemical concentrations
   cycle_unique <- unique(chemical_immune_chunk$SDDSRVYR)
 
+  # Check that cycle length before and after removing NA are the same
+  if(cycle_length != length(cycle_unique))
+  {
+    print("Cycle length before and after removing NA are NOT the same")
+    print(paste(immune_codename, chem_codename))
+    print(cycle_length)
+    print(length(cycle_unique))
+  }
+  
   # print(str_detect(chem_codename, "^LB"))
   
   #mute the summarize grouping message to reduce clutter in the console output
@@ -48,6 +57,7 @@ run_if_else_glm_weighted <- function(chemical_immune_chunk,
   subset_weights_dataset <- weights_dataset %>%
     dplyr::select(SEQN,
                   all_of(chem_weight_codename))
+  # print(colnames(subset_weights_dataset))
   
   #merge in the weights dataset into the chemical_immune_chunk
   chunk_and_weight <- left_join(chemical_immune_chunk, subset_weights_dataset, by = "SEQN") %>%
@@ -55,6 +65,7 @@ run_if_else_glm_weighted <- function(chemical_immune_chunk,
     drop_na(unadj_weight) %>%
     filter(!unadj_weight == 0)
   # View(chunk_and_weight)
+  # print(colnames(chunk_and_weight))
   
   #select SEQN and the survey variables - they're already in chunk_and_weight
   # survey_df <- nhanes_subset %>%
@@ -104,9 +115,51 @@ run_if_else_glm_weighted <- function(chemical_immune_chunk,
     mutate(adjusted_weights = case_when(SDDSRVYR %in% c(1,2) & category_id == "1 and 2" ~ ((2/cycle_length)*(unadj_weight))
                                         , SDDSRVYR %in% c(1,2) & category_id == "1 or 2" ~ ((1/cycle_length)*(unadj_weight))
                                         , SDDSRVYR %in% c(3:10) ~ (1/cycle_length)*(unadj_weight)
-                                        ))
-  # print(str(chunk_and_ad_weight$RIDRETH1))
+                                        )) 
   View(chunk_and_ad_weight)
+  # print(str(chunk_and_ad_weight$RIDRETH1))
+  
+  # Check for the calculation of the adjusted survey weights
+  checking_adjusted_weights <- chunk_and_ad_weight %>%
+    select(SDDSRVYR
+           , category_id
+           , unadj_weight
+           , adjusted_weights) %>%
+    mutate(multiplier_checked = adjusted_weights/unadj_weight) %>%
+    mutate(multiplier_original = case_when(SDDSRVYR %in% c(1,2) & category_id == "1 and 2" ~ ((2/cycle_length))
+                                           , SDDSRVYR %in% c(1,2) & category_id == "1 or 2" ~ ((1/cycle_length))
+                                           , SDDSRVYR %in% c(3:10) ~ (1/cycle_length))) %>%
+    select(SDDSRVYR
+           , multiplier_checked
+           , multiplier_original) %>%
+    unique(.) %>%
+    # The difference between the original multiplier and the checked multiplier should be 0 or
+    # near 0 due to roundoff issues
+    mutate(checking_multiplier = (multiplier_original - multiplier_checked) %>%
+             round(., digits = 0))
+  
+  diff_original_checked_multiplier <- checking_adjusted_weights %>%
+    pull(checking_multiplier) %>%
+    unique(.)
+  
+  # The difference is a single value and is non-zero. 
+  if(length(diff_original_checked_multiplier) == 1)
+  {
+    
+    if(diff_original_checked_multiplier != 0)
+    {
+      print("Incorrect definition multipler for calculating adjusted weights")
+      View(checking_adjusted_weights)
+      print(diff_original_checked_multiplier)
+    }
+    
+  # The difference has multiple values. 
+  } else if(length(diff_original_checked_multiplier) > 1) {
+    print("Incorrect definition multipler for calculating adjusted weights")
+    View(checking_adjusted_weights)
+    print(diff_original_checked_multiplier)
+  }
+  
 
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  ACCOUNT FOR NHANES SAMPLING DESIGN  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
