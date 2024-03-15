@@ -9,12 +9,23 @@ calculate_weighted_detection_frequency <- function(x
     filter(comments_codename_use == x) %>%
     pull(chemical_codename_use) %>%
     unique(.)
-
+  # print(chemical_codename)
   
   if(length(chemical_codename) > 1)
   {
     chemical_codename <- chemical_codename[grepl("LA$|L$", chemical_codename)]
   }
+
+  # If chemical is measured in urine, create a label to include urinary creatinine in the subsetting
+  if(str_detect(chemical_codename, "^LB") == FALSE)
+  {
+    urinary_measurement_tag <- TRUE
+  } else {
+    urinary_measurement_tag <- FALSE
+  }
+  # print(urinary_measurement_tag)
+  
+
 
   
   weight_codename <- paste("WT_"
@@ -29,18 +40,36 @@ calculate_weighted_detection_frequency <- function(x
     print(weight_codename)
   }
   
-  subset_comments <- df_comments %>%
-    select("SEQN"
-           , x
-           , "SDDSRVYR") %>%
-    left_join(.
-              , df_weights %>%
-                select("SEQN"
-                       , weight_codename)
-              , by = "SEQN") %>%
-    na.omit(.) %>%
-    mutate()
-
+  if(urinary_measurement_tag == TRUE)
+  {
+    subset_comments <- df_comments %>%
+      select("SEQN"
+             , x
+             , "URXUCR"
+             , "SDDSRVYR") %>% 
+      mutate(URXUCR = ifelse(URXUCR == 0, NA, URXUCR)) %>%
+      left_join(.
+                , df_weights %>%
+                  select("SEQN"
+                         , weight_codename)
+                , by = "SEQN") %>%
+      na.omit(.) 
+    
+  } else {
+    
+    subset_comments <- df_comments %>%
+      select("SEQN"
+             , x
+             , "SDDSRVYR") %>%
+      left_join(.
+                , df_weights %>%
+                  select("SEQN"
+                         , weight_codename)
+                , by = "SEQN") %>%
+      na.omit(.) 
+  }
+  # print(dim(subset_comments))
+  
   index_x <- which(colnames(subset_comments) == x)
 
   colnames(subset_comments)[index_x] <- "comments"
@@ -78,6 +107,34 @@ calculate_weighted_detection_frequency <- function(x
   total_people <- sum(subset_comments$adjusted_weights)
   # print(total_people)
 
+  total_participants <- nrow(subset_comments)
+  
+  subset_stats_unweighted <- subset_comments %>%
+    group_by(comments) %>%
+    summarise(num_people = n()) %>%
+    ungroup(.) %>%
+    mutate(relative_to_lod = ifelse(comments %in% c(0,2)
+                                    , "above"
+                                    , "below")) %>%
+    group_by(relative_to_lod) %>%
+    summarise(num_people = sum(num_people)) %>%
+    ungroup(.) %>%
+    mutate(percentage = num_people/total_participants*100) %>%
+    pivot_longer(!relative_to_lod
+                 , names_to = "stat"
+                 , values_to = "values") %>%
+    mutate(comment_codename = x) %>%
+    mutate(stats = paste(relative_to_lod
+                         , stat
+                         , "unweighted"
+                         , sep = "_")) %>%
+    select(comment_codename
+           , stats
+           , values) %>%
+    pivot_wider(names_from = stats
+                , values_from = values) %>%
+    mutate(total_number_people_unweighted = total_participants)
+  
   subset_stats <- subset_comments %>%
     group_by(comments) %>%
     summarise(num_people = sum(adjusted_weights)) %>%
@@ -108,7 +165,10 @@ calculate_weighted_detection_frequency <- function(x
     mutate(total_number_people_weighted = total_people)
   # print(wide_subset_stats)
 
-  return(wide_subset_stats)
+  final_stats <- full_join(wide_subset_stats
+                           , subset_stats_unweighted)
+  
+  return(final_stats)
   
   
 }

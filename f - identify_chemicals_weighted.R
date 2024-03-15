@@ -53,8 +53,7 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
   nhanes_subset_unclean <- nhanes_full_dataset %>%
     dplyr::select(all_of(demog),
                   all_of(immune),
-                  all_of(chems),
-                  "WTMEC2YR") %T>%
+                  all_of(chems)) %T>%
     {print("total dataset")} %T>%
     {print(dim(.))} %>% #101316    501 (7 demog + 8 immune + 486 chems)
     
@@ -109,20 +108,23 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
   
   # Convert measurements of 0 to NA
   nhanes_subset_cleaning <- nhanes_subset_unclean %>%
-    mutate(URXUCD = ifelse(URXUCD == 0, NA, URXUCD))
+    mutate(URXUCD = ifelse(URXUCD == 0, NA, URXUCD)) %T>% 
+    {print("convert urinary cadmium measurements of 0 to NA")} %T>%
+    {print(dim(.))}
   # 45870   501 (486 chems + 15 other variables)
   
   #check new measurement counts
   sum(!is.na(nhanes_subset_cleaning$URXUCD)) #13585 total measurements
-  # rm(nhanes_subset_unclean)
   
   subset_comments <- nhanes_subset_unclean %>%
     dplyr::select("SEQN"
-                  , "WTMEC2YR") %>%
+                  , "URXUCR") %>%
       left_join(.
                 , nhanes_comments
-                , by = "SEQN")
-  # print(dim(subset_comments))
+                , by = "SEQN") %T>% 
+    {print("dimension of comments dataset with included participants")} %T>%
+    {print(dim(.))}
+  # 45870   428 
   
   comments_codenames <- colnames(nhanes_comments)
   excess_codenames <- which(comments_codenames %in% c("SEQN", "SDDSRVYR"))
@@ -130,11 +132,13 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
   
   subset_weights <- nhanes_subset_unclean %>%
     dplyr::select("SEQN"
-                  , "WTMEC2YR") %>%
+                  , "URXUCR") %>%
     left_join(.
               , weights_dataset
-              , by = "SEQN")
-  # print(dim(subset_weights))
+              , by = "SEQN") %T>% 
+    {print("dimension of weights dataset with included participants")} %T>%
+    {print(dim(.))}
+  # 45870   542 
   
   stats_weight <- comments_codenames %>%
     map(.
@@ -143,7 +147,7 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
         , subset_weights
         , chem_master) %>%
     bind_rows(.)
-  # View(stats_weight)
+  View(stats_weight)
   
   
   return(stats_weight)
