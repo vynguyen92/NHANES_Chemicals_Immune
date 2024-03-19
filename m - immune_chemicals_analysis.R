@@ -13,6 +13,7 @@ setwd(current_directory)
 # demographics_clean <- readRDS("demographics_clean.rds")
 # list_master_files <- readRDS("list_master_files.rds")
 # response_clean <- readRDS("response_clean.rds")
+survey_weights <- readRDS("weights_clean.rds")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  Download and Load Packages  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -67,20 +68,23 @@ use_these_chems_degrees_freedom <- identify_chemicals_degrees_freedom(nhanes_ful
 use_chems_unweighted_weighted <- use_these_chems %>%
   left_join(.
             , use_these_chems_weighted
-            , by = "comment_codename") %>%
-  left_join(.
-            , use_these_chems_degrees_freedom
-            , by = "chemical_codename_use")
+            , by = "comment_codename") #%>%
+  # left_join(.
+  #           , use_these_chems_degrees_freedom
+  #           , by = "chemical_codename_use")
 
 View(use_chems_unweighted_weighted %>%
        select(chemical_codename_use
               , chemical_name
               , percent_above_LOD
+              , above_percentage_unweighted
               , above_percentage_weighted
-              , degrees_of_freedom) %>%
+              # , degrees_of_freedom
+              ) %>%
+       mutate(dif = abs(percent_above_LOD - above_percentage_unweighted)) %>%
        mutate(include = ifelse(percent_above_LOD >= 50 & 
-                                 above_percentage_weighted >= 50 &
-                                 degrees_of_freedom >= 8
+                                 above_percentage_weighted >= 50 #&
+                                 # degrees_of_freedom >= 8
                                , "yes"
                                , "no")))
 

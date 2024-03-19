@@ -9,6 +9,9 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
   library(magrittr) # %T>% package
   library(usefun)
   
+  weights_dataset <- weights_dataset %>%
+    filter(SDDSRVYR != -1)
+  
   total_chems <- chemical_dataset %>%
     dplyr::select(-SEQN,
                   -SDDSRVYR) %>%
@@ -140,7 +143,10 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
     {print(dim(.))}
   # 45870   542 
   
-  stats_weight <- comments_codenames %>%
+  stats_weight <- #c(comments_codenames[1:6], "URD4FPLC") %>%
+    c("URD4FPLC"
+      , "URDOXYLC"
+      ) %>%
     map(.
         , calculate_weighted_detection_frequency
         , subset_comments

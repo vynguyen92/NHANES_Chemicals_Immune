@@ -25,38 +25,36 @@ calculate_weighted_detection_frequency <- function(x
   }
   # print(urinary_measurement_tag)
   
-
-
-  
   weight_codename <- paste("WT_"
                            , chemical_codename
                            , sep = "")
+  # print(weight_codename)
   
-  
+
   if(!(weight_codename %in% colnames(df_weights)))
   {
     print(x)
     print(chemical_codename)
     print(weight_codename)
   }
-  
+
   if(urinary_measurement_tag == TRUE)
   {
     subset_comments <- df_comments %>%
       select("SEQN"
              , x
              , "URXUCR"
-             , "SDDSRVYR") %>% 
+             , "SDDSRVYR") %>%
       mutate(URXUCR = ifelse(URXUCR == 0, NA, URXUCR)) %>%
       left_join(.
                 , df_weights %>%
                   select("SEQN"
                          , weight_codename)
                 , by = "SEQN") %>%
-      na.omit(.) 
-    
+      na.omit(.)
+
   } else {
-    
+
     subset_comments <- df_comments %>%
       select("SEQN"
              , x
@@ -66,49 +64,69 @@ calculate_weighted_detection_frequency <- function(x
                   select("SEQN"
                          , weight_codename)
                 , by = "SEQN") %>%
-      na.omit(.) 
+      na.omit(.)
   }
-  # print(dim(subset_comments))
-  
+  # View(subset_comments %>%
+  #        unique(.))
+  print(dim(subset_comments))
+
   index_x <- which(colnames(subset_comments) == x)
 
   colnames(subset_comments)[index_x] <- "comments"
   # View(subset_comments)
-  
+
   index_weights <- which(colnames(subset_comments) == weight_codename)
-  
+
   colnames(subset_comments)[index_weights] <- "unadjusted_weights"
-  
+
   unique_cycles <- unique(subset_comments$SDDSRVYR)
-  # print(unique_cycles)
-  
+  print(unique_cycles)
+
   cycle_length <- length(unique_cycles)
+  print(cycle_length)
   
-  if("1" %in% unique_cycles | "2" %in% unique_cycles)
+  df_problematic_pesticides <- find_problematic_pesticides(df_chem_master)
+  # View(df_problematic_pesticides)
+  
+  if(all(c("1", "2") %in% unique_cycles) == TRUE)
   {
+    if(x %in% df_problematic_pesticides$comments_codename_use)
+    {
+      
+      cycle_cat_id <- "1 or 2"
+      
+    } else {
+      
+      cycle_cat_id <- "1 and 2"
+      
+    }
+    
+  } else if(all(c("1", "2") %in% unique_cycles) == FALSE 
+            & "1" %in% unique_cycles 
+            | "2" %in% unique_cycles) 
+  {
+
     cycle_cat_id <- "1 or 2"
-    
-  } else if("1" %in% unique_cycles & "2" %in% unique_cycles) {
-    
-    cycle_cat_id <- "1 and 2"
-    
+
   } else {
-    
+
     cycle_cat_id <- "other"
   }
+  print(cycle_cat_id)
   
   subset_comments <- subset_comments %>%
     mutate(cycle_cat_id = cycle_cat_id) %>%
     mutate(adjusted_weights = case_when(SDDSRVYR %in% c(1,2) & cycle_cat_id == "1 and 2" ~ ((2/cycle_length)*(unadjusted_weights))
                                         , SDDSRVYR %in% c(1,2) & cycle_cat_id == "1 or 2" ~ ((1/cycle_length)*(unadjusted_weights))
-                                        , SDDSRVYR %in% c(3:10) ~ (1/cycle_length)*(unadjusted_weights))) 
+                                        , SDDSRVYR %in% c(3:10) ~ (1/cycle_length)*(unadjusted_weights)))
   # View(subset_comments)
-  
+
   total_people <- sum(subset_comments$adjusted_weights)
   # print(total_people)
 
   total_participants <- nrow(subset_comments)
-  
+  # print(total_participants)
+
   subset_stats_unweighted <- subset_comments %>%
     group_by(comments) %>%
     summarise(num_people = n()) %>%
@@ -134,8 +152,9 @@ calculate_weighted_detection_frequency <- function(x
     pivot_wider(names_from = stats
                 , values_from = values) %>%
     mutate(total_number_people_unweighted = total_participants)
-  
-  subset_stats <- subset_comments %>%
+  # print(subset_stats_unweighted)
+
+  subset_stats_weighted <- subset_comments %>%
     group_by(comments) %>%
     summarise(num_people = sum(adjusted_weights)) %>%
     ungroup(.) %>%
@@ -145,10 +164,7 @@ calculate_weighted_detection_frequency <- function(x
     group_by(relative_to_lod) %>%
     summarise(num_people = sum(num_people)) %>%
     ungroup(.) %>%
-    mutate(percentage = num_people/total_people*100)
-  # print(subset_stats)
-
-  wide_subset_stats <- subset_stats %>%
+    mutate(percentage = num_people/total_people*100) %>%
     pivot_longer(!relative_to_lod
                  , names_to = "stat"
                  , values_to = "values") %>%
@@ -163,12 +179,11 @@ calculate_weighted_detection_frequency <- function(x
     pivot_wider(names_from = stats
                 , values_from = values) %>%
     mutate(total_number_people_weighted = total_people)
-  # print(wide_subset_stats)
+  # print(wide_subset_stats_weighted)
 
-  final_stats <- full_join(wide_subset_stats
+  final_stats <- full_join(subset_stats_weighted
                            , subset_stats_unweighted)
-  
+  # View(final_stats)
+
   return(final_stats)
-  
-  
 }
