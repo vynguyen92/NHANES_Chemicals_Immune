@@ -51,7 +51,10 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
              "RIAGENDR", #gender
              "INDFMPIR", #poverty-income ratio
              "BMXWAIST", #waist circumference
-             "URXUCR")   #creatinine
+             "URXUCR",   #creatinine
+             "LBXCOT",   #cotinine
+             "SDMVPSU",  #PSU
+             "SDMVSTRA") #strata
   
   nhanes_subset_unclean <- nhanes_full_dataset %>%
     dplyr::select(all_of(demog),
@@ -116,45 +119,114 @@ identify_chemicals_weighted <- function(nhanes_full_dataset,
     {print(dim(.))}
   # 45870   501 (486 chems + 15 other variables)
   
-  #check new measurement counts
-  sum(!is.na(nhanes_subset_cleaning$URXUCD)) #13585 total measurements
+  long_cleaning <- nhanes_subset_cleaning %>%
+    pivot_longer(cols = all_of(chems),
+                 names_to = "chemical_codename",
+                 values_to = "measurements") %>%
+    drop_na(measurements) #no participants dropped
   
+  long_creatinine_seqn <- long_cleaning %>%
+    mutate(urinary = case_when(str_detect(chemical_codename, "^LB", negate = TRUE) ~ 99999999)) %>%
+    mutate(creat_na = ifelse(urinary == 99999999 & is.na(URXUCR), NA, measurements)) %>%
+    drop_na(creat_na) %>%
+    dplyr::select(-urinary,
+                  -creat_na) %>%
+    distinct(SEQN) %>%
+    pull(SEQN)
+  
+  rm(long_cleaning)
+  print(length(long_creatinine_seqn)) #45528 - dropped 342 participants
+  
+  #keep this subset of participants
+  nhanes_creatinine <- nhanes_subset_cleaning %>%
+    filter(SEQN %in% long_creatinine_seqn)
+  
+  nhanes_creatinine <- nhanes_creatinine %>%
+    mutate(URXNAL = case_when(SEQN == 65564 & URXNAL == 0.0553 ~ 5000000000,
+                              TRUE ~ as.numeric(URXNAL))) %>%
+    mutate(URXNAL = na_if(URXNAL, 5000000000)) %>%
+    mutate(URXUCR = ifelse(URXUCR == 0, NA, URXUCR))
+  
+  #check new measurement counts
+  # sum(!is.na(nhanes_subset_unclean$URXUCD)) #13585 total measurements
+
   subset_comments <- nhanes_subset_unclean %>%
     dplyr::select("SEQN"
-                  , "URXUCR") %>%
-      left_join(.
-                , nhanes_comments
-                , by = "SEQN") %T>% 
+                  , all_of(demog)) %>%
+    left_join(.
+              , nhanes_comments
+              , by = "SEQN") %>%
+    filter(SEQN %in% long_creatinine_seqn) %T>%
     {print("dimension of comments dataset with included participants")} %T>%
     {print(dim(.))}
-  # 45870   428 
-  
+  # 45528   436
+
   comments_codenames <- colnames(nhanes_comments)
-  excess_codenames <- which(comments_codenames %in% c("SEQN", "SDDSRVYR"))
+  # Remove SEQN, SDDSRVYR, and estradiol to prevent calculations of their detection frequency
+  # estradiol is not an exogenous chemical
+  excess_codenames <- which(comments_codenames %in% c("SEQN"
+                                                      , "SDDSRVYR"
+                                                      , "LBDESTLC"
+                                                      ))
   comments_codenames <- comments_codenames[-excess_codenames]
-  
+
   subset_weights <- nhanes_subset_unclean %>%
     dplyr::select("SEQN"
                   , "URXUCR") %>%
     left_join(.
               , weights_dataset
-              , by = "SEQN") %T>% 
+              , by = "SEQN") %>%
+    filter(SEQN %in% long_creatinine_seqn) %T>%
     {print("dimension of weights dataset with included participants")} %T>%
     {print(dim(.))}
-  # 45870   542 
-  
-  stats_weight <- #c(comments_codenames[1:6], "URD4FPLC") %>%
-    c("URD4FPLC"
-      , "URDOXYLC"
-      ) %>%
+  # 45528   542
+
+  stats_weight <- comments_codenames %>% #[1:2] %>%
+    #c(comments_codenames[1:6], "URD4FPLC") %>%
+    # c("LBD196LC"
+    #   , "LBD138LC"
+    #   , "LBDBPBLC"
+    #   # , "SSMONPL"
+    #   ) %>%
     map(.
         , calculate_weighted_detection_frequency
         , subset_comments
         , subset_weights
-        , chem_master) %>%
+        , chem_master
+        , demog) %>%
     bind_rows(.)
-  View(stats_weight)
-  
-  
+  # View(stats_weight)
+
+  stats_weight <- get_counts_for_cu_zn(df_inclusion_criteria_stats = stats_weight
+                                       , nhanes_subset = nhanes_subset_unclean
+                                       , df_weights = subset_weights
+                                       , demographics = demog)
+
+  weird_smk_chems <- c("URXANBT",
+                       "URXANTT",
+                       "URXCOXT",
+                       "URXHPBT",
+                       "URXNICT",
+                       "URXNNCT",
+                       "URXNOXT")
+
+  stats_weight <- stats_weight %>%
+    filter(!(chemical_codename_use %in% weird_smk_chems)) %>%
+    filter(chem_family != "Dietary Components") %>%
+    filter(chem_family != "Phytoestrogens") %>%
+    mutate(include = ifelse(above_percentage_unweighted >= 50 &
+                              above_percentage_weighted >= 50 &
+                              degrees_of_freedom >= 8
+                            , "yes"
+                            , "no")) %>%
+    mutate(chemical_codename_use = ifelse(chemical_codename_use == "LBX138158LA"
+                                          , "LBX138LA"
+                                          , chemical_codename_use)) %>%
+    mutate(chemical_codename_use = ifelse(chemical_codename_use == "LBX196203LA"
+                                          , "LBX196LA"
+                                          , chemical_codename_use)) %>%
+    filter(include == "yes")
+  # View(stats_weight)
+
   return(stats_weight)
 }

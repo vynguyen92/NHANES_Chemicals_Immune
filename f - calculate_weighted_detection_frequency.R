@@ -1,21 +1,89 @@
 calculate_weighted_detection_frequency <- function(x
                                                    , df_comments
                                                    , df_weights
-                                                   , df_chem_master)
+                                                   , df_chem_master
+                                                   , vector_demographics)
 {
   print(x)
   
-  chemical_codename <- df_chem_master %>%
-    filter(comments_codename_use == x) %>%
-    pull(chemical_codename_use) %>%
-    unique(.)
-  # print(chemical_codename)
+  if(x == "LBD196LC") {
+    
+    chemical_codename <- "LBX196203LA"
+    
+  } else if(x == "LBD138LC") {
+    
+    chemical_codename <- "LBX138158LA"
+    
+  } else {
+    chemical_codename <- df_chem_master %>%
+      filter(comments_codename_use == x) %>%
+      pull(chemical_codename_use) %>%
+      unique(.)
+  }
+  
   
   if(length(chemical_codename) > 1)
   {
     chemical_codename <- chemical_codename[grepl("LA$|L$", chemical_codename)]
   }
-
+  # print(chemical_codename)
+  # print(colnames(df_chem_master))
+  
+  if(chemical_codename == "LBX138158LA")
+  {
+    chemical_name <- "PCB138 & 158 Lipid Adj (ng/g)" 
+    
+    chem_family <- "Polychlorinated Biphenyls (PCB)"
+    
+    chem_family_shortened <- "PCBs"
+    
+  } else if(chemical_codename == "LBX196203LA") {
+    
+    chemical_name <- "PCB196 & 203 Lipid Adj (ng/g)" 
+    
+    chem_family <- "Polychlorinated Biphenyls (PCB)"
+    
+    chem_family_shortened <- "PCBs"
+    
+  } else {
+    
+    index_chem <- which(df_chem_master$chemical_codename_use == chemical_codename)
+    
+    chemical_name <- df_chem_master[index_chem,] %>%
+      pull(chemical_name) %>%
+      unique(.)
+    
+    chem_family <- df_chem_master[index_chem,] %>%
+      pull(chem_family) %>%
+      unique(.)
+    
+    chem_family_shortened <- df_chem_master[index_chem,] %>%
+      pull(chem_family_shortened) %>%
+      unique(.)
+  }
+  
+  if(length(chemical_name) > 1)
+  {
+    if(chemical_codename == "URXUIO") {
+      
+      chemical_name <- "Iodine, urine (ng/mL)" 
+      
+    } else {
+      
+      index_chem <- which(df_chem_master$chemical_codename_use == chemical_codename)
+      
+      subset_chem_master <- df_chem_master[index_chem,] 
+      
+      index_unit_change_na <- which(is.na(subset_chem_master$unit_change) == TRUE)
+      # print(index_unit_change_na)
+      
+      chemical_name <- subset_chem_master[index_unit_change_na,] %>%
+        pull(chemical_name) %>%
+        unique(.)
+    }
+  }
+  print(chemical_name)
+  
   # If chemical is measured in urine, create a label to include urinary creatinine in the subsetting
   if(str_detect(chemical_codename, "^LB") == FALSE)
   {
@@ -28,7 +96,7 @@ calculate_weighted_detection_frequency <- function(x
   weight_codename <- paste("WT_"
                            , chemical_codename
                            , sep = "")
-  # print(weight_codename)
+  print(weight_codename)
   
 
   if(!(weight_codename %in% colnames(df_weights)))
@@ -43,7 +111,7 @@ calculate_weighted_detection_frequency <- function(x
     subset_comments <- df_comments %>%
       select("SEQN"
              , x
-             , "URXUCR"
+             , vector_demographics
              , "SDDSRVYR") %>%
       mutate(URXUCR = ifelse(URXUCR == 0, NA, URXUCR)) %>%
       left_join(.
@@ -55,9 +123,15 @@ calculate_weighted_detection_frequency <- function(x
 
   } else {
 
+    index_creatinine <- which(vector_demographics == "URXUCR")
+
+    vector_demographics <- vector_demographics[-index_creatinine]
+
+
     subset_comments <- df_comments %>%
       select("SEQN"
              , x
+             , vector_demographics
              , "SDDSRVYR") %>%
       left_join(.
                 , df_weights %>%
@@ -66,9 +140,10 @@ calculate_weighted_detection_frequency <- function(x
                 , by = "SEQN") %>%
       na.omit(.)
   }
+  # # print(colnames(subset_comments))
   # View(subset_comments %>%
   #        unique(.))
-  print(dim(subset_comments))
+  # print(dim(subset_comments))
 
   index_x <- which(colnames(subset_comments) == x)
 
@@ -84,26 +159,26 @@ calculate_weighted_detection_frequency <- function(x
 
   cycle_length <- length(unique_cycles)
   print(cycle_length)
-  
+
   df_problematic_pesticides <- find_problematic_pesticides(df_chem_master)
   # View(df_problematic_pesticides)
-  
+
   if(all(c("1", "2") %in% unique_cycles) == TRUE)
   {
     if(x %in% df_problematic_pesticides$comments_codename_use)
     {
-      
+
       cycle_cat_id <- "1 or 2"
-      
+
     } else {
-      
+
       cycle_cat_id <- "1 and 2"
-      
+
     }
-    
-  } else if(all(c("1", "2") %in% unique_cycles) == FALSE 
-            & "1" %in% unique_cycles 
-            | "2" %in% unique_cycles) 
+
+  } else if(all(c("1", "2") %in% unique_cycles) == FALSE
+            & "1" %in% unique_cycles
+            | "2" %in% unique_cycles)
   {
 
     cycle_cat_id <- "1 or 2"
@@ -113,7 +188,7 @@ calculate_weighted_detection_frequency <- function(x
     cycle_cat_id <- "other"
   }
   print(cycle_cat_id)
-  
+
   subset_comments <- subset_comments %>%
     mutate(cycle_cat_id = cycle_cat_id) %>%
     mutate(adjusted_weights = case_when(SDDSRVYR %in% c(1,2) & cycle_cat_id == "1 and 2" ~ ((2/cycle_length)*(unadjusted_weights))
@@ -154,6 +229,19 @@ calculate_weighted_detection_frequency <- function(x
     mutate(total_number_people_unweighted = total_participants)
   # print(subset_stats_unweighted)
 
+  if(!("below_percentage_unweighted" %in% colnames(subset_stats_unweighted)))
+  {
+    subset_stats_unweighted <- subset_stats_unweighted %>%
+      mutate(below_percentage_unweighted = 0) %>%
+      mutate(below_num_people_unweighted = 0)
+
+  } else if(!("above_percentage_unweighted" %in% colnames(subset_stats_unweighted))) {
+
+    subset_stats_unweighted <- subset_stats_unweighted %>%
+      mutate(above_percentage_unweighted = 0) %>%
+      mutate(above_num_people_unweighted = 0)
+  }
+
   subset_stats_weighted <- subset_comments %>%
     group_by(comments) %>%
     summarise(num_people = sum(adjusted_weights)) %>%
@@ -179,10 +267,51 @@ calculate_weighted_detection_frequency <- function(x
     pivot_wider(names_from = stats
                 , values_from = values) %>%
     mutate(total_number_people_weighted = total_people)
-  # print(wide_subset_stats_weighted)
+  # print(subset_stats_weighted)
+
+  if(!("below_percentage_weighted" %in% colnames(subset_stats_weighted)))
+  {
+    subset_stats_weighted <- subset_stats_weighted %>%
+      mutate(below_percentage_weighted = 0) %>%
+      mutate(below_num_people_weighted = 0 )
+
+  } else if(!("above_percentage_weighted" %in% colnames(subset_stats_weighted))) {
+
+    subset_stats_weighted <- subset_stats_weighted %>%
+      mutate(above_percentage_weighted = 0) %>%
+      mutate(above_num_people_weighted = 0)
+  }
+
+  subset_psu_strata <- subset_comments %>%
+    select("SDMVSTRA"
+           , "SDMVPSU") %>%
+    unique(.)
+  # View(subset_psu_strata)
+
+  num_psu <- nrow(subset_psu_strata)
+  # print(num_psu)
+
+  num_strata <- subset_psu_strata %>%
+    pull(SDMVSTRA) %>%
+    unique(.) %>%
+    length(.)
+  # print(num_strata)
+
+  degrees_of_freedom <- num_psu - num_strata
+  # print(degrees_of_freedom)
+
 
   final_stats <- full_join(subset_stats_weighted
-                           , subset_stats_unweighted)
+                           , subset_stats_unweighted) %>%
+    mutate(degrees_of_freedom = degrees_of_freedom
+           , num_psu = num_psu
+           , num_strata = num_strata) %>%
+    mutate(chemical_codename_use = chemical_codename) %>%
+    relocate(chemical_codename_use) %>%
+    mutate(chemical_name = chemical_name) %>%
+    relocate(chemical_name, .after = chemical_codename_use) %>%
+    mutate(chem_family = chem_family) %>%
+    mutate(chem_family_shortened = chem_family_shortened)
   # View(final_stats)
 
   return(final_stats)
