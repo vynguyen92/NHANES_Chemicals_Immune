@@ -24,6 +24,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
   # library(data.table)
   library(dichromat)
   library(pheatmap)
+  library(grDevices)
   
   # subset_chemicals <- use_these_chems
   # nhanes_subset <- nhanes_subset_dataset
@@ -115,7 +116,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
   rownames(chem_correlations_copy) <- chem_names$chemical_name
   
   # Save matrix as a csv file
-  setwd(paste0(current_directory, "/Correlation Plots - Demog, Cells, Chemicals"))
+  # setwd(paste0(current_directory, "/Correlation Plots - Demog, Cells, Chemicals"))
   write.csv(chem_correlations_copy, "chem_correlations_matrix.csv")
   
   
@@ -144,14 +145,19 @@ correlation_plot_chemicals <- function(subset_chemicals,
 
   #############################################################################################################
   ############################################# Set Up For Plotting ###########################################
-  #############################################################################################################
+  #############################################################################################################ß
   
   #set up to make the chemical family color bars
   chem_fam_names <- chem_fam_reorder %>%
-    dplyr::select(`Chemical Family`)
+    dplyr::select(`Chemical Family`) %>% 
+    as.data.frame()
+  
   row.names(chem_fam_names) <- chem_fam_reorder$chemical_codename_use
 
-  chem_fam_names <- as.data.frame(chem_fam_names)
+  # View(chem_fam_names)
+  # print(str(chem_fam_names))
+  
+  # chem_fam_names <- as.data.frame(chem_fam_names)
 
   #identify where to put the gaps between chemical families
   num_chem_fam <- chem_fam_names %>%
@@ -199,7 +205,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
   #############################################################################################################
 
   #set directory to correlation plots folder
-  setwd(paste0(current_directory, "/Correlation Plots - Demog, Cells, Chemicals"))
+  # setwd(paste0(current_directory, "/Correlation Plots - Demog, Cells, Chemicals"))
 
   #https://stackoverflow.com/questions/31677923/set-0-point-for-pheatmap-in-r
   paletteLength <- 100
@@ -210,8 +216,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
                 seq(max(chem_correlations, na.rm = T)/paletteLength,
                     max(chem_correlations, na.rm = T),
                     length.out=floor(paletteLength/1.8)))
-
-
+ 
   pdf("chemical_heatmap_correlation_smk.pdf", width = 14, height = 9)
   # pheatmap(mat = chem_correlations,
   #          cluster_rows = FALSE, cluster_cols = FALSE,
@@ -231,6 +236,9 @@ correlation_plot_chemicals <- function(subset_chemicals,
   #          breaks=myBreaks,
   #          # cellheight=5,cellwidth=4,
   #          legend = TRUE)
+
+  # print(chem_fam_names)
+
   pheatmap(chem_correlations,
            cluster_rows = FALSE, cluster_cols = FALSE,
            annotation_row = chem_fam_names,
@@ -239,7 +247,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
            labels_col = chem_fam_reorder$chemical_name,
            gaps_col = num_chem_fam$breaks,
            gaps_row = num_chem_fam$breaks,
-           color=myColor, breaks=myBreaks,
+           color = myColor, breaks = myBreaks,
            annotation_colors = chem_family_colors,
            annotation_names_row = FALSE, #x label
            annotation_names_col = FALSE, #y label
@@ -247,7 +255,8 @@ correlation_plot_chemicals <- function(subset_chemicals,
            fontsize_col = 2,
            legend = TRUE)
   dev.off()
-  
+  print("chemical_heatmap_correlation_smk.pdf")
+
 
   svg(file = "chemical_heatmap_correlation_smk.svg", width = 14, height = 9)
   pheatmap(chem_correlations,
@@ -272,7 +281,7 @@ correlation_plot_chemicals <- function(subset_chemicals,
   #############################################################################################################
   library(beepr)
   beep()
-  setwd(current_directory)
+  # setwd(current_directory)
 }
 
 #Extra code:
